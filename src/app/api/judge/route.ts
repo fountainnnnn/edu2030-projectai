@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getDb, getSessionUser } from "@/lib/db";
-import { judgePrompt } from "@/lib/judge";
+import { fallbackScore, judgePrompt } from "@/lib/judge";
 import { getQuest } from "@/lib/quests";
+import { allowLlmCall, MAX_PROMPT_CHARS } from "@/lib/usage";
 
 export async function POST(req: Request) {
   let body: { questId?: string; prompt?: string };
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
   }
 
   const questId = (body.questId ?? "").trim();
-  const prompt = (body.prompt ?? "").toString();
+  const prompt = (body.prompt ?? "").toString().slice(0, MAX_PROMPT_CHARS);
   const quest = getQuest(questId);
   if (!quest?.rubric?.length || !quest.artifact) {
     return NextResponse.json({ error: "unknown prompting quest" }, { status: 400 });
@@ -22,10 +23,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "prompt required" }, { status: 400 });
   }
 
-  const verdict = await judgePrompt(quest, prompt);
+  const db = getDb();
+  const verdict = allowLlmCall(db, req) ? await judgePrompt(quest, prompt) : fallbackScore(quest, prompt);
 
   const jar = await cookies();
-  const db = getDb();
   const user = getSessionUser(db, jar.get("pai_user")?.value);
   if (user) {
       db.prepare(

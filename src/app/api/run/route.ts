@@ -2,8 +2,9 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getDb, getSessionUser } from "@/lib/db";
 import { executeAgentResponse, fallbackAgentResponse } from "@/lib/execute";
-import { demandsVerification, judgePrompt } from "@/lib/judge";
+import { demandsVerification, fallbackScore, judgePrompt } from "@/lib/judge";
 import { getQuest } from "@/lib/quests";
+import { allowLlmCall, MAX_PROMPT_CHARS } from "@/lib/usage";
 
 export async function POST(req: Request) {
   let body: { questId?: string; prompt?: string };
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   }
 
   const questId = (body.questId ?? "").trim();
-  const prompt = (body.prompt ?? "").toString();
+  const prompt = (body.prompt ?? "").toString().slice(0, MAX_PROMPT_CHARS);
   const quest = getQuest(questId);
   if (!quest?.rubric?.length || !quest.artifact) {
     return NextResponse.json({ error: "unknown prompting quest" }, { status: 400 });
@@ -23,12 +24,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "prompt required" }, { status: 400 });
   }
 
+  const db = getDb();
+
   // Judge the prompt and run it with this quest's context, concurrently. The natural
   // agent response is shown to the student; the verdict powers the private coach.
-  const [verdict, executed] = await Promise.all([
-    judgePrompt(quest, prompt),
-    executeAgentResponse(quest, prompt),
-  ]);
+  // Over the usage budget, both come from the offline fallbacks instead.
+  const [verdict, executed] = allowLlmCall(db, req)
+    ? await Promise.all([judgePrompt(quest, prompt), executeAgentResponse(quest, prompt)])
+    : [fallbackScore(quest, prompt), null];
 
   const response = executed ?? fallbackAgentResponse(quest, verdict.tier);
   const responseFallback = executed === null;
@@ -38,7 +41,6 @@ export async function POST(req: Request) {
   const trapSprung = quest.id === "p4" && !demandsVerification(prompt);
 
   const jar = await cookies();
-  const db = getDb();
   const user = getSessionUser(db, jar.get("pai_user")?.value);
   if (user) {
       db.prepare(

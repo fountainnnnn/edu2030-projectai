@@ -80,9 +80,18 @@ no Root Directory override is needed. Add `OPENROUTER_API_KEY` to the Railway se
 Mount a persistent volume at `/app/data` so SQLite progress survives deployments; the app uses
 `data/app.db` relative to its working directory by default.
 
+### Usage limits
+
+Every judged or run prompt costs OpenRouter calls, so the public deployment is budgeted
+(`src/lib/usage.ts`): 30 LLM-backed prompts per visitor (IP) per hour and 300 per day across
+the site, with prompts cut at 4,000 characters. Over budget, a prompt is scored by the offline
+rule-based judge and answered with the fallback response, so the quest keeps working and nothing
+is spent. Change the budgets with `PAI_IP_LIMIT_PER_HOUR` and `PAI_DAILY_LIMIT`. The daily count
+lives in the SQLite database, so it survives restarts when the volume is mounted.
+
 ## Honest limitations
 
-Built in ~2 hours for a live demo, so: **there is no real auth**. Identity is a client-readable cookie and the landing page lets anyone pick "Teacher", so any viewer can open the teacher dashboard and read the whole class's progress. Role is never verified server-side; a request can also auto-create an account. Fine for one laptop in one classroom, disqualifying for anything shared — before this goes near real student data it needs a signed session and a server-side role. Grading calls cost real (tiny) money per run. The deepfake quiz ships without images until you add six to `public/deepfakes/`. None of this is production software; all of it is a working argument that AI literacy should be taught by doing.
+Built in ~2 hours for a live demo, so: **there is no real auth**. Identity is a client-readable cookie and the landing page lets anyone pick "Teacher", so any viewer can open the teacher dashboard and read the whole class's progress. Role is never verified server-side; a request can also auto-create an account. Fine for one laptop in one classroom, disqualifying for anything shared — before this goes near real student data it needs a signed session and a server-side role. Grading calls cost real (tiny) money per run, within the usage limits above. The deepfake quiz ships without images until you add six to `public/deepfakes/`. None of this is production software; all of it is a working argument that AI literacy should be taught by doing.
 
 ## Credits
 
