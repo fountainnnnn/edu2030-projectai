@@ -15,12 +15,11 @@ const HOUR_MS = 60 * 60 * 1000;
 // window. The daily cap is the cost ceiling, so it lives in SQLite and survives restarts.
 const ipWindows = new Map<string, { start: number; count: number }>();
 
-// Railway's edge appends the client address to X-Forwarded-For, so the rightmost entry
-// is the one a client cannot forge.
+// Railway's edge overwrites X-Real-IP with the client address, so a client cannot forge it
+// (measured 2026-10-23). The rightmost X-Forwarded-For entry is the edge node itself, shared
+// by many visitors, so X-Forwarded-For is not used.
 export function clientIp(req: Request): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  const last = forwarded?.split(",").pop()?.trim();
-  return last || "unknown";
+  return req.headers.get("x-real-ip")?.trim() || "unknown";
 }
 
 function allowIp(ip: string, now: number): boolean {
